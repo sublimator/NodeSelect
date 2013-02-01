@@ -263,8 +263,14 @@ class ViewData(sublime_plugin.EventListener):
         def after():
             buffer_id = v.buffer_id()
 
-            del ViewData.data[v.view_id]
-            del ViewData.oneoff_callbacks[v.view_id]
+            try:
+                del ViewData.data[v.view_id]
+            except KeyError:
+                pass
+            try:
+                del ViewData.oneoff_callbacks[v.view_id]
+            except KeyError:
+                pass
 
             d = ViewData.buffer_data[buffer_id]
             d[0] -= 1
