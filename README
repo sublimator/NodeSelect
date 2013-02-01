@@ -1,0 +1,1 @@
+Needs to have lxml and cssselect modules (pip install pyquery) on sys.path
