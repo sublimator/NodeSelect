@@ -471,7 +471,7 @@ class ProxyBuilder(sublime_plugin.EventListener, ShowsXPathMixin):
                 (sr == nr for (sr, (i, nr)) in zip(start_sels, node_sels))
             )
 
-    def on_modified(self, view):
+    def on_modified_async(self, view):
         if not view.match_selector(0, 'text.html'):
             return
 
@@ -487,7 +487,7 @@ class ProxyBuilder(sublime_plugin.EventListener, ShowsXPathMixin):
                     target=self.thread_loop, args=(view, view_data))
             t.start()
 
-    trigger = on_modified
+    trigger = on_modified_async
 
     def thread_loop(self, view, view_data):
         thread_started_at = time.time()
