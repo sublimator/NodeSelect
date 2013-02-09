@@ -163,17 +163,17 @@ class NodeProxy:
         # DOM?
         bparser        = self.create_root_parser()
 
+        has_doctype = '<!DOCTYPE'.lower() in self.first_500_chars_lowered
         # For buffers with no explicit root (Templates / PHP etc)
         self.auto_root = auto_root = int(
-                not self.xml and
-               ('<!DOCTYPE'.lower() not in self.first_500_chars_lowered
-                and '<html' not in self.first_500_chars_lowered) )
+                not self.xml and '<html' not in self.first_500_chars_lowered)
 
         # This bollix is for when the buffer has no `root` node per se lxml is
         # quite strict in wanting a root node
         if auto_root:
             for p in parser, bparser:
-                p.feed(str(DEFAULT_DOCTYPE))
+                if not has_doctype:
+                    p.feed(str(DEFAULT_DOCTYPE))
                 p.feed(AUTO_ROOT_OPEN_TAG)
 
         while True:
@@ -187,6 +187,8 @@ class NodeProxy:
 
             if SELF_CLOSING_DIDNT_EXPLICITLY_CLOSE.match(token):
                 token = token[:-1] + ' />'
+            elif token.startswith("<!doctype"): # fix for html 5
+                token = "<!DOCTYPE" + token[9:]
             try:
                 parser.feed(token)
                 bparser.feed(token)
