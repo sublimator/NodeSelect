@@ -166,7 +166,8 @@ class NodeProxy:
         has_doctype = '<!DOCTYPE'.lower() in self.first_500_chars_lowered
         # For buffers with no explicit root (Templates / PHP etc)
         self.auto_root = auto_root = int(
-                not self.xml and '<html' not in self.first_500_chars_lowered)
+                not self.xml and not has_doctype  
+                and '<html' not in self.first_500_chars_lowered)
 
         # This bollix is for when the buffer has no `root` node per se lxml is
         # quite strict in wanting a root node
@@ -185,6 +186,7 @@ class NodeProxy:
             elif val is True: break  # No more tokens to feed
             else:             token, self.start_pos, self.end_pos  = val
 
+            # TODO: move these two to scoped_tokenizer
             if SELF_CLOSING_DIDNT_EXPLICITLY_CLOSE.match(token):
                 token = token[:-1] + ' />'
             elif token.startswith("<!doctype"): # fix for html 5
