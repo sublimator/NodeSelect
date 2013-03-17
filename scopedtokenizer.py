@@ -83,9 +83,7 @@ def scoped_tokenizer(view, tokenizer):
                         normed_token = escape_php_token (normed_token)
 
                     yield normed_token, start, f.end()
-
-                    for c in catch_up_to(end, tokenizer):
-                        yield c
+                    yield from catch_up_to(end, tokenizer)
 
                     continue
 

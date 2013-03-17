@@ -26,16 +26,16 @@ from .scopedtokenizer import crude_tokenizer, scoped_tokenizer
 ################################### CONSTANTS ##################################
 
 # In case we don't really have an explicit root.
-AUTO_ROOT_OPEN_TAG  = ('<sublime:document '
-                       'xmlns:sublime="http://www.sublimetext.com">')
-AUTO_ROOT_CLOSE_TAG = '</sublime:document>'
+AUTO_ROOT_OPEN_TAG  = (b'<sublime:document '
+                       b'xmlns:sublime="http://www.sublimetext.com">')
+AUTO_ROOT_CLOSE_TAG = b'</sublime:document>'
 # What if you have a bunch of tags in a document and one of them actually starts
 # at 0, it would ruin the bisection mechanisms if some automatic root started @
 # 0 too.
 AUTO_ROOT_START     = -1
 
 # If we don't have a doctype we'll feed this
-DEFAULT_DOCTYPE     = ( '<!DOCTYPE html>' )
+DEFAULT_DOCTYPE     = ( b'<!DOCTYPE html>' )
 MODULE_LOAD_TIME    = time.time()
 NON_TAGS            = (ET._Comment, ET._ProcessingInstruction)
 HANDLE_ENTITIES     = re.compile("&(\w+);").sub
@@ -166,7 +166,7 @@ class NodeProxy:
         has_doctype = '<!DOCTYPE'.lower() in self.first_500_chars_lowered
         # For buffers with no explicit root (Templates / PHP etc)
         self.auto_root = auto_root = int(
-                not self.xml and not has_doctype  
+                not self.xml and not has_doctype
                 and '<html' not in self.first_500_chars_lowered)
 
         # This bollix is for when the buffer has no `root` node per se lxml is
@@ -174,7 +174,7 @@ class NodeProxy:
         if auto_root:
             for p in parser, bparser:
                 if not has_doctype:
-                    p.feed(str(DEFAULT_DOCTYPE))
+                    p.feed((DEFAULT_DOCTYPE))
                 p.feed(AUTO_ROOT_OPEN_TAG)
 
         while True:
@@ -192,9 +192,11 @@ class NodeProxy:
             elif token.startswith("<!doctype"): # fix for html 5
                 token = "<!DOCTYPE" + token[9:]
             try:
-                parser.feed(token)
-                bparser.feed(token)
+                encode = token.encode('utf-8')
+                parser.feed(encode)
+                bparser.feed(encode)
             except ET.XMLSyntaxError as e:
+                print (e)
                 yield e
 
         if auto_root:
@@ -217,7 +219,13 @@ class NodeProxy:
                   not isinstance(t, ET._Entity)):
             self.tags_lookup[tag] = i
             self.tags_lookup[i]   = tag
+
+        # if any(self.opened.values()):
+        #     print ("Opened values", self.opened.values())
+
+        # print ("Returning True")
         return True
+
 
     def close(self):
         pass
@@ -301,19 +309,23 @@ def selection_nodes(view, sels = None, node_proxy=None):
     for sel in (sels or view.sel()):
         node_index = max (
             0, bisect.bisect(node_starts, sel.begin() ) -1 )
-
         node = node_proxy[node_index]
-        if node_proxy.auto_root and node.begin() == AUTO_ROOT_START:
-            node = sublime.Region(0, view.size())
 
-        while not node.contains(sel):
-            parent = node = node_proxy.tags_lookup[node_index].getparent()
-            if parent is None: break
+        if node is not None:
+            while not node.contains(sel):
+                parent = node_proxy.tags_lookup[node_index].getparent()
+                if parent is None: break
 
-            node_index = node_proxy.tags_lookup[parent]
-            node = node_proxy[node_index]
+                node_index = node_proxy.tags_lookup[parent]
+                node = node_proxy[node_index]
 
-        nodes.append((node_index, node))
+            # if node is not None:
+            # if node_proxy.auto_root and node.begin() == AUTO_ROOT_START:
+            #     node = sublime.Region(0, 0)# view.size())
+            #     print ("SelectionNodes", node)
+                # node = None
+            # else:
+            nodes.append((node_index, node))
 
     return nodes, node_proxy
 
@@ -426,16 +438,18 @@ class ShowsXPathMixin:
                                                         node_proxy=node_proxy)
                     if nodes:
                         i, node = list(nodes)[0]
-                        highlights = list (
-                            chain(*( element_name_regions (
-                                        view, n, ix=i, node_proxy=node_proxy)
-                                      for (i, n) in nodes )))
+                        
+                        if node.a != AUTO_ROOT_START:
+                            highlights = list (
+                                chain(*( element_name_regions (
+                                            view, n, ix=i, node_proxy=node_proxy)
+                                          for (i, n) in nodes )))
 
-                        if threaded and not view.change_count() == start_mod:
-                            raise Exception()
+                            if threaded and not view.change_count() == start_mod:
+                                raise Exception()
 
-                        view.add_regions('xpath',   highlights,
-                                         'comment', flags=sublime.DRAW_OUTLINED)
+                            view.add_regions('xpath',   highlights,
+                                             'comment', flags= sublime.DRAW_NO_OUTLINE |  sublime.DRAW_NO_FILL | sublime.DRAW_SOLID_UNDERLINE | sublime.DRAW_EMPTY_AS_OVERWRITE)
                         xpath = (node_proxy.root
                                            .getroottree()
                                            .getpath(node_proxy.tags_lookup[i]))
@@ -674,12 +688,10 @@ class SelectNode(sublime_plugin.TextCommand):
         for i, node in nodes:
             if xpath:
                 els = node_proxy.tags_lookup[i].xpath(xpath)
-
                 for e in [ xp_2_selections(view, node_proxy, xpath, e,
                            full=selection_style=="full_node")
                            for e in els ]:
-                    for n in e:
-                        yield n
+                    yield from e
             else:
                 yield node
 
@@ -690,8 +702,7 @@ class SelectElementName(sublime_plugin.TextCommand):
     @node_select_cmd()
     def run(self, view, start_sels, nodes, node_proxy, **args):
         for i, node in nodes:
-            for n in element_name_regions(view, node):
-                yield n
+            yield from element_name_regions(view, node)
 
 class SelectInsideTag(sublime_plugin.TextCommand):
     @node_select_cmd()
