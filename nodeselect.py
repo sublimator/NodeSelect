@@ -55,7 +55,7 @@ KEY                 = __package__
 # better with NodeProxy
 SELF_CLOSING_DIDNT_EXPLICITLY_CLOSE        = re.compile (
     '<(area|base|basefont|br|col|frame|hr|img|input|isindex|link|meta|param|'
-      'embed|keygen,command)(>|.*?[^/]>)')
+      'embed|keygen,command)(>|.*?[^/]>)', re.M | re.S)
 
 ################################## EXCEPTIONS ##################################
 
@@ -186,12 +186,22 @@ class NodeProxy:
             elif val is True: break  # No more tokens to feed
             else:             token, self.start_pos, self.end_pos  = val
 
+            opening_tag = token.startswith('<') and \
+                          self.view.match_selector(
+                            self.start_pos, 'punctuation.definition.tag.begin')
+
             # TODO: move these two to scoped_tokenizer
-            if SELF_CLOSING_DIDNT_EXPLICITLY_CLOSE.match(token):
+            if opening_tag and SELF_CLOSING_DIDNT_EXPLICITLY_CLOSE.match(token):
                 token = token[:-1] + ' />'
             elif token.startswith("<!doctype"): # fix for html 5
                 token = "<!DOCTYPE" + token[9:]
             try:
+                if opening_tag:
+                    # b4 = token
+                    token = re.sub('(?<=\s)(\w+)(?=>|(\s\w+))', r'\1="1"', token)
+                    # if b4 != token:
+                    #     print (b4, 'to')
+                    #     print (token)
                 encode = token.encode('utf-8')
                 parser.feed(encode)
                 bparser.feed(encode)
@@ -346,7 +356,8 @@ def element_name_regions(view, node, ix=None, node_proxy=None):
     ns = [element_name_region(view, node.begin())]
 
     if node.starts.end() != node.ends.end():
-        ns += [view.extract_scope(node.end() -2)]
+        ends_at = node.end() - 1
+        ns += [sublime.Region(find_tag_start(view, ends_at) + 1, ends_at)]
 
     return ns
 
@@ -438,7 +449,7 @@ class ShowsXPathMixin:
                                                         node_proxy=node_proxy)
                     if nodes:
                         i, node = list(nodes)[0]
-                        
+
                         if node.a != AUTO_ROOT_START:
                             highlights = list (
                                 chain(*( element_name_regions (
@@ -449,7 +460,10 @@ class ShowsXPathMixin:
                                 raise Exception()
 
                             view.add_regions('xpath',   highlights,
-                                             'comment', flags= sublime.DRAW_NO_OUTLINE |  sublime.DRAW_NO_FILL | sublime.DRAW_SOLID_UNDERLINE | sublime.DRAW_EMPTY_AS_OVERWRITE)
+                                             'comment', flags= sublime.DRAW_NO_OUTLINE |  sublime.DRAW_NO_FILL | sublime.DRAW_STIPPLED_UNDERLINE )
+                        else:
+                            view.erase_regions('xpath')
+
                         xpath = (node_proxy.root
                                            .getroottree()
                                            .getpath(node_proxy.tags_lookup[i]))
@@ -462,6 +476,7 @@ class ShowsXPathMixin:
 ################################## SHOW XPATH ##################################
 
 class ShowXPath(sublime_plugin.EventListener, ShowsXPathMixin):
+# class ShowXPath:
     def on_selection_modified_async(self, view):
         """
         We don't want to schedule these up too many times as it becomes a real
