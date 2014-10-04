@@ -186,7 +186,8 @@ class NodeProxy:
             elif val is True: break  # No more tokens to feed
             else:             token, self.start_pos, self.end_pos  = val
 
-            opening_tag = token.startswith('<') and \
+            opening_tag = token[0] == '<' and \
+                          token[1] != '/' and \
                           self.view.match_selector(
                             self.start_pos, 'punctuation.definition.tag.begin')
 
@@ -196,13 +197,25 @@ class NodeProxy:
             elif token.startswith("<!doctype"): # fix for html 5
                 token = "<!DOCTYPE" + token[9:]
             try:
-                if opening_tag:
-                    # b4 = token
-                    token = re.sub('(?<=\s)(\w+)(?=>|(\s\w+))', r'\1="1"', token)
-                    # if b4 != token:
-                    #     print (b4, 'to')
-                    #     print (token)
-                encode = token.encode('utf-8')
+                encode = None
+                if opening_tag and ' ' in token:
+                    e = html.fromstring(token)
+                    rewritten = False
+
+                    for k in list(e.attrib):
+                        if e.attrib[k] == '':
+                            e.attrib[k] = '1'
+                            rewritten = True
+
+                    if rewritten:
+                        e.text = ' '# force it to not be self closing ;)
+                        d = ET.tostring(e)
+                        encode = d[0:d.find(b'>')+1]
+                        #print('encode', token, encode)
+
+                if encode is None:
+                    encode = token.encode('utf-8')
+
                 parser.feed(encode)
                 bparser.feed(encode)
             except ET.XMLSyntaxError as e:
